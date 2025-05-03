@@ -27,7 +27,10 @@ async function getDpiaContext(dpiaId: string) {
       .eq('id', dpiaId)
       .single();
     
-    if (dpiaError) throw dpiaError;
+    if (dpiaError) {
+      console.error('Error fetching DPIA:', dpiaError);
+      return null;
+    }
     
     // Get DPIA sections
     const { data: sections, error: sectionsError } = await supabase
@@ -35,7 +38,10 @@ async function getDpiaContext(dpiaId: string) {
       .select('*')
       .eq('dpia_id', dpiaId);
     
-    if (sectionsError) throw sectionsError;
+    if (sectionsError) {
+      console.error('Error fetching DPIA sections:', sectionsError);
+      return null;
+    }
     
     return {
       dpia,
@@ -58,14 +64,16 @@ When responding:
 - Provide specific examples when helpful
 - Cite relevant GDPR articles when appropriate
 - Suggest content that could be used to fill in form fields
-- When you have a good suggestion for a field, format it as a suggestion that can be used to pre-fill the field
+
+When you have a good suggestion for a field, include a line starting with "SUGGESTION:" followed by your suggested text.
+For example: "SUGGESTION: The purpose of this processing is to analyze customer behavior for marketing optimization."
 
 Current DPIA information:`;
 
   // Add DPIA context if available
-  if (dpiaContext) {
-    systemPrompt += `\nTitle: ${dpiaContext.dpia.title}
-Status: ${dpiaContext.dpia.status}`;
+  if (dpiaContext && dpiaContext.dpia) {
+    systemPrompt += `\nTitle: ${dpiaContext.dpia.title || 'Untitled DPIA'}
+Status: ${dpiaContext.dpia.status || 'draft'}`;
 
     // Add section data
     if (dpiaContext.sections && dpiaContext.sections.length > 0) {
@@ -93,10 +101,15 @@ router.post('/chat', async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
     
+    console.log(`Processing chat request for DPIA: ${dpiaId}, Section: ${section}`);
+    
     // Get DPIA context if dpiaId is provided
     let dpiaContext = null;
     if (dpiaId) {
       dpiaContext = await getDpiaContext(dpiaId);
+      if (!dpiaContext) {
+        console.log(`No context found for DPIA: ${dpiaId}`);
+      }
     }
     
     // Create system prompt
@@ -110,14 +123,16 @@ router.post('/chat', async (req, res) => {
     
     // Add system message at the beginning
     const messages = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system' as const, content: systemPrompt },
       ...formattedHistory.slice(-10), // Only use last 10 messages to stay within context limits
-      { role: 'user', content: message }
+      { role: 'user' as const, content: message }
     ];
+    
+    console.log('Sending request to Claude API...');
     
     // Call Claude API
     const response = await anthropic.messages.create({
-      model: 'claude-3-haiku-20240307',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 1000,
       messages,
       temperature: 0.7,
@@ -128,16 +143,18 @@ router.post('/chat', async (req, res) => {
     const responseText = response.content[0].text;
     
     // Simple pattern matching for suggestions
-    // In a production app, you might want a more robust approach
     const suggestionMatch = responseText.match(/SUGGESTION: (.*?)(?:\n|$)/);
     if (suggestionMatch) {
       suggestion = {
         content: suggestionMatch[1].trim()
       };
+      console.log('Found suggestion in response');
     }
     
     // Clean up the response to remove the suggestion marker
     const cleanResponse = responseText.replace(/SUGGESTION: (.*?)(?:\n|$)/, '').trim();
+    
+    console.log('Successfully processed AI response');
     
     res.json({
       message: cleanResponse,
@@ -150,6 +167,11 @@ router.post('/chat', async (req, res) => {
       details: error.message 
     });
   }
+});
+
+// Health check endpoint
+router.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
 });
 
 export default router;

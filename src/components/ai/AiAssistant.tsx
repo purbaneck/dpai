@@ -27,11 +27,18 @@ const AiAssistant: React.FC<AiAssistantProps> = ({
   const {
     messages,
     isLoading,
+    error,
     sendMessage,
     clearMessages,
     preFillSuggestion,
-    setPreFillSuggestion
+    setPreFillSuggestion,
+    setCurrentContext
   } = useAiStore();
+
+  // Set current context when props change
+  useEffect(() => {
+    setCurrentContext(dpiaId || null, currentSection || null);
+  }, [dpiaId, currentSection, setCurrentContext]);
 
   // Scroll to bottom of messages when new messages arrive
   useEffect(() => {
@@ -108,6 +115,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({
           <div className="flex items-center">
             <MessageSquare className="h-5 w-5 text-blue-600 mr-2" />
             <h3 className="font-medium">AI Assistant</h3>
+            {dpiaId && <span className="ml-2 text-xs text-gray-500">DPIA: {dpiaId.substring(0, 8)}...</span>}
           </div>
           <div className="flex items-center space-x-2">
             <button 
@@ -201,6 +209,13 @@ const AiAssistant: React.FC<AiAssistantProps> = ({
                 <Loader2 className="h-4 w-4 text-blue-600 animate-spin mr-2" />
                 <span className="text-gray-600 text-sm">Thinking...</span>
               </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm">
+              <p className="font-medium">Error:</p>
+              <p>{error}</p>
             </div>
           )}
           
